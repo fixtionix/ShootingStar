@@ -1,0 +1,25 @@
+name: ShootingStar
+version: '${project.version}'
+main: com.shootingstar.ShootingStarPlugin
+api-version: '1.21'
+description: Live shooting star events with particles, loot, and PvP tension.
+authors: [ShootingStar]
+website: ''
+
+commands:
+  shootingstar:
+    description: ShootingStar admin commands.
+    usage: /shootingstar <spawn|reload|stop>
+    aliases: [ss, star]
+    permission: shootingstar.admin
+
+permissions:
+  shootingstar.admin:
+    description: Access to all ShootingStar admin commands.
+    default: op
+  shootingstar.compass:
+    description: Ability to craft and use the Star Compass.
+    default: true
+  shootingstar.loot:
+    description: Ability to claim loot from shooting stars.
+    default: true

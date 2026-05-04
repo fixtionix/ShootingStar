@@ -1,0 +1,161 @@
+# ╔══════════════════════════════════════╗
+# ║       ShootingStar Configuration     ║
+# ╚══════════════════════════════════════╝
+
+# How often stars spawn (seconds). A random value between min and max is picked.
+event-interval:
+  min: 1800   # 30 minutes
+  max: 5400   # 90 minutes
+
+# The world where stars can fall. Leave empty to use the default world.
+world: world
+
+# Spawn area: stars fall within this radius of 0,0 (blocks).
+# Stars avoid oceans and protected chunks automatically.
+spawn-radius: 5000
+
+# Minimum distance from world spawn (0,0) so stars don't land on top of spawn.
+min-spawn-distance: 100
+
+# How fast the star falls (ticks per block). Lower = faster. Recommended: 1–3.
+fall-speed-ticks: 2
+
+# Height the star starts falling from.
+fall-start-y: 280
+
+# Seconds before the loot chest unlocks after impact.
+chest-unlock-delay: 15
+
+# Seconds before the loot chest disappears after unlocking.
+chest-despawn-delay: 90
+
+# Enable PvP in the impact zone.
+impact-pvp-zone: true
+
+# Radius (blocks) of the PvP zone around the impact site.
+pvp-radius: 24
+
+# Broadcast announcement countdown (minutes before broadcast). Set to 0 to disable early warning.
+early-warning-minutes: 3
+
+# Star variants and their weights (higher = more common).
+# Types: NORMAL, BLUE, RED, RAINBOW
+variants:
+  NORMAL:
+    weight: 70
+    loot-table: normal
+  BLUE:
+    weight: 20
+    loot-table: blue
+  RED:
+    weight: 8
+    loot-table: red
+  RAINBOW:
+    weight: 2
+    loot-table: rainbow
+
+# Loot tables: each entry has a chance (0.0–1.0) and a list of items.
+loot-tables:
+  normal:
+    min-items: 2
+    max-items: 4
+    items:
+      - material: DIAMOND
+        amount: 1
+        chance: 0.40
+      - material: GOLD_INGOT
+        amount: 3
+        chance: 0.60
+      - material: EXPERIENCE_BOTTLE
+        amount: 8
+        chance: 0.70
+      - material: IRON_INGOT
+        amount: 8
+        chance: 0.80
+      - material: EMERALD
+        amount: 1
+        chance: 0.30
+      - material: STAR_FRAGMENT   # custom item
+        amount: 1
+        chance: 1.00
+
+  blue:
+    min-items: 3
+    max-items: 5
+    items:
+      - material: DIAMOND
+        amount: 3
+        chance: 0.60
+      - material: NETHERITE_SCRAP
+        amount: 1
+        chance: 0.40
+      - material: ENCHANTED_BOOK
+        amount: 1
+        chance: 0.50
+      - material: EXPERIENCE_BOTTLE
+        amount: 16
+        chance: 0.90
+      - material: STAR_FRAGMENT
+        amount: 3
+        chance: 1.00
+
+  red:
+    min-items: 2
+    max-items: 4
+    mob-spawn: true
+    mob-count: 6
+    mobs:
+      - ZOMBIE
+      - SKELETON
+      - WITHER_SKELETON
+    items:
+      - material: DIAMOND
+        amount: 2
+        chance: 0.50
+      - material: BLAZE_ROD
+        amount: 4
+        chance: 0.70
+      - material: MAGMA_CREAM
+        amount: 4
+        chance: 0.70
+      - material: STAR_FRAGMENT
+        amount: 2
+        chance: 1.00
+
+  rainbow:
+    min-items: 4
+    max-items: 6
+    items:
+      - material: NETHERITE_INGOT
+        amount: 1
+        chance: 0.50
+      - material: DIAMOND
+        amount: 6
+        chance: 0.90
+      - material: ELYTRA
+        amount: 1
+        chance: 0.15
+      - material: TOTEM_OF_UNDYING
+        amount: 1
+        chance: 0.30
+      - material: ENCHANTED_GOLDEN_APPLE
+        amount: 1
+        chance: 0.40
+      - material: STAR_FRAGMENT
+        amount: 5
+        chance: 1.00
+
+# Messages (supports MiniMessage format)
+messages:
+  early-warning: "<gold><bold>★</bold></gold> <yellow>A shooting star approaches! It will land in <bold>{minutes}</bold> minutes.</yellow>"
+  broadcast: "<gold><bold>★ SHOOTING STAR!</bold></gold> <yellow>A {variant} is falling at <bold>X: {x} Z: {z}</bold>! Rush there now!</yellow>"
+  impact: "<red><bold>★</bold></red> <yellow>The star has <bold>landed</bold>! Get to <bold>X: {x} Z: {z}</bold> before time runs out!</yellow>"
+  chest-unlocked: "<green><bold>✔</bold></green> <yellow>The loot chest at <bold>X: {x} Z: {z}</bold> is now <bold>open</bold>!</yellow>"
+  chest-despawned: "<gray>The loot at X: {x} Z: {z} has vanished.</gray>"
+  pvp-enabled: "<red>⚔ PvP is active in the impact zone!</red>"
+  no-permission: "<red>You don't have permission to do that.</red>"
+  star-spawned: "<green>[ShootingStar] Star event triggered by admin.</green>"
+  plugin-reloaded: "<green>[ShootingStar] Configuration reloaded.</green>"
+  star-stopped: "<green>[ShootingStar] Active star event cancelled.</green>"
+  compass-pointing: "<aqua>★ Star compass pointing to <bold>X: {x} Z: {z}</bold> ({distance}m away)</aqua>"
+  no-active-star: "<gray>No shooting star is currently active.</gray>"
