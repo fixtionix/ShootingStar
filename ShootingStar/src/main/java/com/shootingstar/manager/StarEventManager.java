@@ -19,9 +19,6 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
 
-/**
- * Core event logic: picks a location, animates the fall, handles impact, spawns loot.
- */
 public class StarEventManager {
 
     private final ShootingStarPlugin plugin;
@@ -29,14 +26,10 @@ public class StarEventManager {
     private final MessageUtil        messages;
     private final Random             random = new Random();
 
-    // The currently-active star (null if no event running)
     private ActiveStar activeStar;
 
-    // Map of impact location → locked chest entity (for PDC tagging)
-    private final Map<Location, Chest> spawnedChests = new HashMap<>();
-
-    // Locations currently in PvP zone
-    private final Set<Location> pvpZoneLocations = new HashSet<>();
+    private final Map<Location, Chest> spawnedChests    = new HashMap<>();
+    private final Set<Location>        pvpZoneLocations = new HashSet<>();
 
     public StarEventManager(ShootingStarPlugin plugin) {
         this.plugin      = plugin;
@@ -44,15 +37,11 @@ public class StarEventManager {
         this.messages    = new MessageUtil(plugin.getConfig());
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Public API
-    // ─────────────────────────────────────────────────────────
+    // ── Public API ──────────────────────────────────────────
 
-    public boolean isEventActive() { return activeStar != null; }
-
-    public ActiveStar getActiveStar() { return activeStar; }
-
-    public MessageUtil getMessageUtil() { return messages; }
+    public boolean isEventActive()          { return activeStar != null; }
+    public ActiveStar getActiveStar()       { return activeStar; }
+    public MessageUtil getMessageUtil()     { return messages; }
 
     public boolean isInPvpZone(Location loc) {
         if (activeStar == null || activeStar.getPhase() == ActiveStar.Phase.DONE) return false;
@@ -64,29 +53,25 @@ public class StarEventManager {
             && loc.distanceSquared(impact) <= radius * radius;
     }
 
-    /**
-     * Starts a new shooting-star event. Picks a random variant and location,
-     * then begins the animation loop.
-     *
-     * @return true if the event started, false if one is already running or no location found.
-     */
+    /** Starts a random-variant event. */
     public boolean startEvent() {
-        if (activeStar != null) {
-            plugin.getLogger().warning("Tried to start a star event while one is already running.");
-            return false;
-        }
+        if (activeStar != null) return false;
+        return startEventWithVariant(pickVariant());
+    }
 
-        StarVariant variant = pickVariant();
+    /** Starts an event forcing a specific variant. */
+    public boolean startEventWithVariant(StarVariant variant) {
+        if (activeStar != null) return false;
 
         String worldName = plugin.getConfig().getString("world", "world");
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            plugin.getLogger().severe("World '" + worldName + "' not found! Check config.yml → world.");
+            plugin.getLogger().severe("World '" + worldName + "' not found!");
             return false;
         }
 
-        int radius    = plugin.getConfig().getInt("spawn-radius", 5000);
-        int minDist   = plugin.getConfig().getInt("min-spawn-distance", 100);
+        int radius  = plugin.getConfig().getInt("spawn-radius", 5000);
+        int minDist = plugin.getConfig().getInt("min-spawn-distance", 100);
         Location land = LocationFinder.findLandLocation(world, radius, minDist);
         if (land == null) {
             plugin.getLogger().warning("Could not find a valid land location after 30 attempts.");
@@ -95,77 +80,68 @@ public class StarEventManager {
 
         activeStar = new ActiveStar(variant, land);
 
-        // Optional early warning
         int earlyMinutes = plugin.getConfig().getInt("early-warning-minutes", 3);
         if (earlyMinutes > 0) {
             messages.broadcast("early-warning", "minutes", String.valueOf(earlyMinutes));
         }
 
-        // Broadcast fall announcement
         messages.broadcast("broadcast",
-            "variant",  variant.getDisplayName(),
+            "variant", variant.getDisplayName(),
             "x", String.valueOf(land.getBlockX()),
             "z", String.valueOf(land.getBlockZ())
         );
 
-        // Begin the fall animation
         beginFall(activeStar);
         return true;
     }
 
-    /** Admin-triggered: spawn at a specific location. */
+    /** Admin-triggered: spawn at a specific location with random variant. */
     public boolean startEventAt(Location loc) {
         if (activeStar != null) return false;
         StarVariant variant = pickVariant();
         loc.setY(loc.getWorld().getHighestBlockYAt(loc));
         activeStar = new ActiveStar(variant, loc);
-
         messages.broadcast("broadcast",
-            "variant",  variant.getDisplayName(),
+            "variant", variant.getDisplayName(),
             "x", String.valueOf(loc.getBlockX()),
             "z", String.valueOf(loc.getBlockZ())
         );
-
         beginFall(activeStar);
         return true;
     }
 
-    /** Cancels and cleans up whatever is currently running. */
+    /** Cancels and cleans up the current event. */
     public void cancelCurrentEvent() {
         if (activeStar == null) return;
-
         cancelTask(activeStar.getFallTaskId());
         cancelTask(activeStar.getUnlockTaskId());
         cancelTask(activeStar.getDespawnTaskId());
-
         if (activeStar.getMarker() != null && !activeStar.getMarker().isDead()) {
             activeStar.getMarker().remove();
         }
-
         pvpZoneLocations.clear();
         spawnedChests.clear();
         activeStar = null;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Fall animation
-    // ─────────────────────────────────────────────────────────
+    // ── Fall animation ──────────────────────────────────────
 
     private void beginFall(ActiveStar star) {
-        int startY    = plugin.getConfig().getInt("fall-start-y", 280);
-        int targetY   = star.getTargetLocation().getBlockY();
-        int ticksPerBlock = Math.max(1, plugin.getConfig().getInt("fall-speed-ticks", 2));
+        int startY  = plugin.getConfig().getInt("fall-start-y", 350);
+        int targetY = star.getTargetLocation().getBlockY();
+
+        // Use exact duration in seconds so it's always consistent
+        int fallDurationSeconds = plugin.getConfig().getInt("fall-duration-seconds", 180);
+        long fallDurationTicks  = fallDurationSeconds * 20L;
 
         double startX = star.getTargetLocation().getX();
         double startZ = star.getTargetLocation().getZ();
         World  world  = star.getTargetLocation().getWorld();
 
-        // Slight horizontal drift so the star comes in at an angle
         double driftX = (random.nextDouble() - 0.5) * 80;
         double driftZ = (random.nextDouble() - 0.5) * 80;
 
-        double totalBlocks = startY - targetY;
-        final double[] progress = {0}; // fraction 0→1
+        final long[] tick = {0};
 
         BukkitRunnable fallTask = new BukkitRunnable() {
             @Override
@@ -175,10 +151,9 @@ public class StarEventManager {
                     return;
                 }
 
-                progress[0] += 1.0 / (totalBlocks * ticksPerBlock);
-                double t = Math.min(progress[0], 1.0);
+                tick[0]++;
+                double t = Math.min((double) tick[0] / fallDurationTicks, 1.0);
 
-                // Lerp with drift fading out
                 double curX = startX + driftX * (1 - t);
                 double curY = startY  - (startY - targetY) * t;
                 double curZ = startZ + driftZ * (1 - t);
@@ -199,33 +174,25 @@ public class StarEventManager {
         star.setFallTaskId(taskId);
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Impact
-    // ─────────────────────────────────────────────────────────
+    // ── Impact ──────────────────────────────────────────────
 
     private void onImpact(ActiveStar star) {
         star.setPhase(ActiveStar.Phase.LANDED);
         Location impact = star.getTargetLocation();
         World    world  = impact.getWorld();
 
-        // Visual & audio impact
         ParticleUtil.spawnImpact(impact, star.getVariant());
-        world.playSound(impact, Sound.ENTITY_GENERIC_EXPLODE,    SoundCategory.AMBIENT, 4f, 0.6f);
-        world.playSound(impact, Sound.BLOCK_BEACON_ACTIVATE,     SoundCategory.AMBIENT, 2f, 1.2f);
+        world.playSound(impact, Sound.ENTITY_GENERIC_EXPLODE,        SoundCategory.AMBIENT, 4f, 0.6f);
+        world.playSound(impact, Sound.BLOCK_BEACON_ACTIVATE,         SoundCategory.AMBIENT, 2f, 1.2f);
         world.playSound(impact, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.AMBIENT, 3f, 0.8f);
-
-        // Visual lightning (no damage)
         world.strikeLightningEffect(impact);
 
-        // Scorch the ground slightly — place a small crater of scorched blocks
         scorchGround(impact, star.getVariant());
 
-        // Spawn mobs if red star
         if (star.getVariant() == StarVariant.RED) {
             spawnGuardMobs(impact);
         }
 
-        // Broadcast impact
         messages.broadcast("impact",
             "x", String.valueOf(impact.getBlockX()),
             "z", String.valueOf(impact.getBlockZ())
@@ -235,7 +202,6 @@ public class StarEventManager {
             messages.broadcast("pvp-enabled");
         }
 
-        // Schedule chest unlock
         int unlockDelay = plugin.getConfig().getInt("chest-unlock-delay", 15) * 20;
         BukkitRunnable unlockTask = new BukkitRunnable() {
             @Override
@@ -244,10 +210,8 @@ public class StarEventManager {
                 openLootChest(star);
             }
         };
-        int unlockId = unlockTask.runTaskLater(plugin, unlockDelay).getTaskId();
-        star.setUnlockTaskId(unlockId);
+        star.setUnlockTaskId(unlockTask.runTaskLater(plugin, unlockDelay).getTaskId());
 
-        // Ambient glow while chest is locked
         BukkitRunnable glowTask = new BukkitRunnable() {
             @Override
             public void run() {
@@ -263,16 +227,15 @@ public class StarEventManager {
 
     private void openLootChest(ActiveStar star) {
         star.setPhase(ActiveStar.Phase.CHEST_OPEN);
-        Location impact = star.getTargetLocation();
-        World    world  = impact.getWorld();
+        Location impact   = star.getTargetLocation();
+        World    world    = impact.getWorld();
 
-        // Place a chest block at impact
-        Location chestLoc = impact.clone();
+        // Place chest 1 block above the impact point so it's not buried in scorched ground
+        Location chestLoc = impact.clone().add(0, 1, 0);
         chestLoc.getBlock().setType(Material.CHEST);
 
         if (chestLoc.getBlock().getState() instanceof Chest chest) {
             List<ItemStack> loot = lootBuilder.buildLoot(star.getVariant());
-            // Distribute loot randomly across chest slots
             int[] slots = randomSlots(loot.size(), 27);
             for (int i = 0; i < loot.size() && i < slots.length; i++) {
                 chest.getInventory().setItem(slots[i], loot.get(i));
@@ -280,7 +243,7 @@ public class StarEventManager {
             spawnedChests.put(chestLoc, chest);
         }
 
-        world.playSound(impact, Sound.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 2f, 1f);
+        world.playSound(impact, Sound.BLOCK_CHEST_OPEN,         SoundCategory.BLOCKS,  2f, 1f);
         world.playSound(impact, Sound.BLOCK_BEACON_POWER_SELECT, SoundCategory.AMBIENT, 1.5f, 1.5f);
 
         messages.broadcast("chest-unlocked",
@@ -288,27 +251,22 @@ public class StarEventManager {
             "z", String.valueOf(impact.getBlockZ())
         );
 
-        // Schedule despawn
         int despawnDelay = plugin.getConfig().getInt("chest-despawn-delay", 90) * 20;
         BukkitRunnable despawnTask = new BukkitRunnable() {
             @Override
-            public void run() {
-                despawnChest(star);
-            }
+            public void run() { despawnChest(star); }
         };
-        int despawnId = despawnTask.runTaskLater(plugin, despawnDelay).getTaskId();
-        star.setDespawnTaskId(despawnId);
+        star.setDespawnTaskId(despawnTask.runTaskLater(plugin, despawnDelay).getTaskId());
     }
 
     private void despawnChest(ActiveStar star) {
         star.setPhase(ActiveStar.Phase.DONE);
-        Location impact = star.getTargetLocation();
-        World    world  = impact.getWorld();
+        Location impact   = star.getTargetLocation();
+        World    world    = impact.getWorld();
 
-        // Remove the chest block
-        Location chestLoc = impact.clone();
+        // Chest was placed 1 block above impact
+        Location chestLoc = impact.clone().add(0, 1, 0);
         if (chestLoc.getBlock().getType() == Material.CHEST) {
-            // Drop any remaining contents
             if (chestLoc.getBlock().getState() instanceof Chest chest) {
                 for (ItemStack item : chest.getInventory().getContents()) {
                     if (item != null) world.dropItemNaturally(chestLoc, item);
@@ -330,9 +288,7 @@ public class StarEventManager {
         activeStar = null;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────
+    // ── Helpers ─────────────────────────────────────────────
 
     private StarVariant pickVariant() {
         ConfigurationSection variants = plugin.getConfig().getConfigurationSection("variants");
@@ -362,13 +318,13 @@ public class StarEventManager {
     }
 
     private void scorchGround(Location impact, StarVariant variant) {
-        World world = impact.getWorld();
-        int radius = 3;
+        World world  = impact.getWorld();
+        int   radius = 3;
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
                 if (dx * dx + dz * dz > radius * radius) continue;
                 Location bl = impact.clone().add(dx, 0, dz);
-                Material m = bl.getBlock().getType();
+                Material m  = bl.getBlock().getType();
                 if (m == Material.GRASS_BLOCK || m == Material.DIRT) {
                     bl.getBlock().setType(Material.COARSE_DIRT);
                 } else if (m == Material.STONE || m == Material.DEEPSLATE) {
@@ -380,8 +336,7 @@ public class StarEventManager {
 
     private void spawnGuardMobs(Location impact) {
         World world = impact.getWorld();
-        ConfigurationSection redConfig = plugin.getConfig()
-                .getConfigurationSection("loot-tables.red");
+        ConfigurationSection redConfig = plugin.getConfig().getConfigurationSection("loot-tables.red");
         if (redConfig == null) return;
 
         int count = redConfig.getInt("mob-count", 6);
@@ -391,11 +346,10 @@ public class StarEventManager {
         for (int i = 0; i < count; i++) {
             String mobName = mobNames.get(random.nextInt(mobNames.size()));
             try {
-                EntityType type = EntityType.valueOf(mobName.toUpperCase());
-                double angle  = random.nextDouble() * Math.PI * 2;
-                double dist   = 3 + random.nextDouble() * 4;
-                Location spawn = impact.clone().add(
-                        Math.cos(angle) * dist, 1, Math.sin(angle) * dist);
+                EntityType type  = EntityType.valueOf(mobName.toUpperCase());
+                double angle     = random.nextDouble() * Math.PI * 2;
+                double dist      = 3 + random.nextDouble() * 4;
+                Location spawn   = impact.clone().add(Math.cos(angle) * dist, 1, Math.sin(angle) * dist);
                 world.spawnEntity(spawn, type);
             } catch (IllegalArgumentException ignored) {
                 plugin.getLogger().warning("Unknown mob in config: " + mobName);
