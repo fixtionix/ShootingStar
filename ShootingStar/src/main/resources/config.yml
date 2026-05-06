@@ -12,16 +12,16 @@ world: world
 
 # Spawn area: stars fall within this radius of 0,0 (blocks).
 # Stars avoid oceans and protected chunks automatically.
-spawn-radius: 5000
+spawn-radius: 2500
 
 # Minimum distance from world spawn (0,0) so stars don't land on top of spawn.
-min-spawn-distance: 100
+min-spawn-distance: 500
 
 # How fast the star falls (ticks per block). Lower = faster. Recommended: 1–3.
-fall-speed-ticks: 2
+fall-speed-ticks: 10
 
 # Height the star starts falling from.
-fall-start-y: 280
+fall-start-y: 350
 
 # Seconds before the loot chest unlocks after impact.
 chest-unlock-delay: 15
